@@ -20,6 +20,12 @@ import time
 
 # !!!!! Make your changes within here !!!!!
 class player_robot(Robot):
+    robots = dict()
+    robots['maxID'] = 0
+
+    locations = dict()
+    locations[(0,0)] = TileType.Base
+
     def __init__(self, args):
         super(self.__class__, self).__init__(args)
         ##############################################
@@ -32,6 +38,9 @@ class player_robot(Robot):
         self.goinghome = False;      
         self.targetPath = None
         self.targetDest = (0,0)
+        self.id = player_robot.robots['maxID']
+        player_robot.robots['maxID'] = player_robot.robots['maxID'] + 1
+        player_robot.robots[self.id] = (0,0)
 
     # A couple of helper functions (Implemented at the bottom)
     def OppositeDir(self, direction):
@@ -55,14 +64,12 @@ class player_robot(Robot):
     def get_move(self, view):
 
         # Returns home if you have one resource
-        if (self.held_value() > 0):
-            self.goinghome = True
         if(self.storage_remaining() == 0):
             self.goinghome = True
 
         # How to navigate back home
         if(self.goinghome):
-            # You are t home
+            # You are at home
             if(self.toHome == []):
                 self.goinghome = False
                 return (Actions.DROPOFF, Actions.DROP_NONE)
@@ -128,30 +135,43 @@ class player_robot(Robot):
         visited = set()
         visited.add((0,0))
 
-        targetDepleted = (view[self.targetDest[0]][self.targetDest[1]][0].GetType() == TileType.Resource and
-                         view[self.targetDest[0]][self.targetDest[1]][0].AmountRemaining() <= 0)
-
+        possible_paths = list()
+        possible_dests = list()
         # BFS TO find the next resource within your view
-        if(self.targetPath == None or targetDepleted):
-            while(len(queue)>0):
-                path = queue[0]
-                loc = path[0]
-                queue = queue[1:]
-                viewIndex = (loc[0] + viewLen//2,loc[1]+viewLen//2)
-                if (view[viewIndex[0]][viewIndex[1]][0].GetType() == TileType.Resource and
-                    view[viewIndex[0]][viewIndex[1]][0].AmountRemaining() > 0):
-                    # print(path)
-                    self.targetPath = path[1:]
-                    self.targetDest = path[0]
-                    return
-                elif(view[viewIndex[0]][viewIndex[1]][0].CanMove()):
-                    for i in range(8):
-                        x = loc[0] + deltas[i][0]
-                        y = loc[1] + deltas[i][1]
-                        if(abs(x) <= viewLen//2 and abs(y) <= viewLen//2):
-                            if((x,y) not in visited):
-                                queue.append([(x,y)] + path[1:] + [deltas[i]])
-                                visited.add((x,y))
+        while(len(queue)>0):
+            path = queue[0]
+            loc = path[0]
+            queue = queue[1:]
+            viewIndex = (loc[0] + viewLen//2,loc[1]+viewLen//2)
+            tile = view[viewIndex[0]][viewIndex[1]][0]
+            if tile.CanMove():
+                for i in range(8):
+                    x = loc[0] + deltas[i][0]
+                    y = loc[1] + deltas[i][1]
+                    if(abs(x) <= viewLen//2 and abs(y) <= viewLen//2):
+                        if((x,y) not in visited):
+                            queue.append([(x,y)] + path[1:] + [deltas[i]])
+                            visited.add((x,y))
+                if (tile.GetType() == TileType.Resource and
+                    tile.AmountRemaining() > 0):
+                    possible_paths.append(path[1:])
+                    possible_dests.append(path[0])
+
+        max_value = -1
+        self.targetPath = None
+        self.targetDest = None
+        for i in range(len(possible_paths)):
+            dest = possible_dests[i]
+            viewIndex = (dest[0] + viewLen//2,dest[1]+viewLen//2)
+            tile = view[viewIndex[0]][viewIndex[1]][0]
+            value = tile.Value()
+            units = tile.AmountRemaining()
+            moves = len(possible_paths[i])
+            heuristic = value * units / (units + moves)
+            if heuristic > max_value:
+                max_value = heuristic
+                self.targetPath = possible_paths[i]
+                self.targetDest = dest
 
         return
 
