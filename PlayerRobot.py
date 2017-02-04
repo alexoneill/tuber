@@ -20,6 +20,9 @@ import time
 
 # !!!!! Make your changes within here !!!!!
 class player_robot(Robot):
+    data = dict()
+    data['maxID'] = 0
+
     def __init__(self, args):
         super(self.__class__, self).__init__(args)
         ##############################################
@@ -32,6 +35,67 @@ class player_robot(Robot):
         self.goinghome = False;      
         self.targetPath = None
         self.targetDest = (0,0)
+        self.ID = player_robot.data['maxID'] + 1
+        self.location = (0,0)
+        player_robot.data['maxID'] = player_robot.data['maxID'] + 1
+        print(self.ID)
+
+    # returns a dictionary d s.t. d[(x,y)] = ()
+    # def resourcesInView(self, view):
+
+    # returns the total amount of resources within a scale x scale box centered
+    # at self.location 
+    # mode = 'COUNT' or 'VALUE'
+    def localValue(self,scale,mode='VALUE'):
+        (x,y) = self.location
+        v = 0
+        for dx in range(-scale/2,scale/2):
+            for dy in range(-scale/2,scale/2):
+                a = self.instance[(x+dx,y+dy)]
+                res = a.resources
+                if res == None:
+                    v += 0
+                    continue
+                unitVal = res.Value()
+                amt = res.AmountRemaining()
+                if mode == 'VALUE':
+                    v += unitVal * amt
+                else:
+                    v += amt
+
+
+    # returns True iff the total amount of resources within a scale x scale
+    # box centered at self.location is less than a given threshold
+    # mode = 'COUNT' or 'VALUE'
+    def isSparse(self,scale,thresh,mode):
+        return self.localValue(scale,mode) < thresh
+
+    #returns a list [(x,y)] of locations that are adjacent to at least one 
+    # def getUnexploredBoundary(self):
+
+    def dist(x1,y1,x2,y2):
+        return ((x2-x1)**2.0 + (y2-y1)**2.0)**0.5
+
+    # if the local view is resource-sparse and inventory is not full,
+    # choose a closest unexplored location to navigate to.
+    # returns coordinates (relative to base) of new exploration point.
+    # Assumes current location is deemed "sparse" (see isSparse)
+    def nextDestIfIdle(self,boxDim=101):
+        foundLocs = [e for e in self.instance]
+        mind,minx,miny = ~1.0,~1,~1
+        minhd = ~1.0 #heuristic distance
+        (rx,ry) = self.location
+        for x in range(-boxDim,boxDim):
+            for y in range(-boxDim,boxDim):
+                if (x,y) in foundLocs:
+                    continue
+                d = dist(x,y,rx,ry)
+                minhd = heurDist(rx,ry)
+                if mind < 0.0 or d < mind:
+                    mind = d
+                    minx = x
+                    miny = y
+        return (minx,miny)
 
     # A couple of helper functions (Implemented at the bottom)
     def OppositeDir(self, direction):
@@ -53,6 +117,7 @@ class player_robot(Robot):
     # README - Get_Move                                                                       #
     ###########################################################################################
     def get_move(self, view):
+        # Todo: update self.instance on each call here
 
         # Returns home if you have one resource
         if (self.held_value() > 0):
