@@ -9,8 +9,14 @@ class RobotMap(object):
     def __init__(self):
         self._state = dict()
 
+        # Add home state
+        self._new_state(0, 0, None, [], 0, None)
+
     def __getitem__(self, pos):
         return self._state[pos]
+
+    def __setitem__(self, pos, val):
+        self._state[pos] = val
 
     def __delitem__(self, pos):
         del self._state[pos]
@@ -22,7 +28,6 @@ class RobotMap(object):
         return len(self._state)
 
     def __iter__(self):
-        # return self._state.iterkeys()
         return self._state.__iter__()
 
     # @private
@@ -39,7 +44,7 @@ class RobotMap(object):
         for (dx, dy) in itertools.product(looks, looks):
             if(not(dx == dy == 0) and ((x + dx, y + dy) in self)):
                 sub_state = self[x + dx, y + dy]
-                if((best == None) or (best.dist > substate.dist)):
+                if((best == None) or (best.dist > sub_state.dist)):
                     best = sub_state
 
         if(best is None):
@@ -67,17 +72,29 @@ class RobotMap(object):
                 return (Actions.MOVE_NE, dist)
 
     def _new_state(self, x, y, tile, markers, dist, home_move):
-        return type('', object, {
+        self[x, y] = type('', (object, ), {
             'x': x,
             'y': y,
-            'resources': tile if(tile.GetType() == TileType.Resource) else None,
+            'tile': tile,
             'markers': markers,
             'dist': dist,
             'to_home': home_move
         })
 
-    def _update_state(self, x, y, **kwargs):
-        self[x, y].__dict__.update(kwargs)
+    def _update_state(self, x, y, markers):
+        self[x, y].markers = markers
+
+    # From http://stackoverflow.com/a/398302/1450189
+    def _spiral(self, X, Y):
+        x = y = 0
+        dx = 0
+        dy = -1
+        for i in range(max(X, Y)**2):
+            if (-X/2 < x <= X/2) and (-Y/2 < y <= Y/2):
+                yield (x, y)
+            if x == y or (x < 0 and x == -y) or (x > 0 and x == 1-y):
+                dx, dy = -dy, dx
+            x, y = x+dx, y+dy
 
     # Args:
     #   pos:   (int, int):  Tuple of global position of robot
@@ -87,14 +104,13 @@ class RobotMap(object):
         (rx, ry) = pos
         n = len(view)
 
-        for (i, j) in itertools.product(xrange(n), xrange(n)):
-            (gx, gy) = (rx + (i - (n // 2)), ry + (j - (n // 2)))
+        for (i, j) in self._spiral(n, n):
+            (gx, gy) = (rx + i, ry + j)
             (tile, num_robots, markers) = view[i][j]
 
             if((gx, gy) not in self):
-                (move, dist) = self._best_move(self, gx, gy)
-                self._state[(gx, gy)] = \
-                    self._new_state(gx, gy, tile, markers, dist, move)
+                (move, dist) = self._best_move(gx, gy)
+                self._new_state(gx, gy, tile, markers, dist, move)
             else:
                 self._update_state(gx, gy,
                     markers = markers
