@@ -82,7 +82,7 @@ def main():
     gameThread = threading.Thread(None,lambda:run_game(game, robots, board))
     gameThread.daemon = True
     gameThread.start()
-    gameThread.join(120)
+    gameThread.join(300)
     if(gameThread.isAlive()):
         print("Your robot timed out")
     with open("map.txt", 'w') as gameFile:

@@ -22,7 +22,8 @@ class RobotMap(object):
         return len(self._state)
 
     def __iter__(self):
-        return self._state.iterkeys()
+        # return self._state.iterkeys()
+        return self._state.__iter__()
 
     # @private
     # Args:

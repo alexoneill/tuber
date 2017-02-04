@@ -2,6 +2,8 @@ from robot import Robot
 from constants import Actions, TileType
 import random
 import time
+from robot_map import RobotMap
+import math
 
 ##########################################################################
 # One of your team members, Chris Hung, has made a starter bot for you.  #
@@ -20,8 +22,6 @@ import time
 
 # !!!!! Make your changes within here !!!!!
 class player_robot(Robot):
-    data = dict()
-    data['maxID'] = 0
 
     def __init__(self, args):
         super(self.__class__, self).__init__(args)
@@ -35,10 +35,11 @@ class player_robot(Robot):
         self.goinghome = False;      
         self.targetPath = None
         self.targetDest = (0,0)
-        self.ID = player_robot.data['maxID'] + 1
+        # self.ID = player_robot.data['maxID'] + 1
         self.location = (0,0)
-        player_robot.data['maxID'] = player_robot.data['maxID'] + 1
-        print(self.ID)
+        # player_robot.data['maxID'] = player_robot.data['maxID'] + 1
+        # print(self.ID)
+        self.instance = RobotMap()
 
     # returns a dictionary d s.t. d[(x,y)] = ()
     # def resourcesInView(self, view):
@@ -52,7 +53,13 @@ class player_robot(Robot):
         for dx in range(-scale/2,scale/2):
             for dy in range(-scale/2,scale/2):
                 a = self.instance[(x+dx,y+dy)]
-                res = a.resources
+                # res = a.resources
+                tile = a.tile
+                tType = tile.getType()
+                if tType != TileType.Resource:
+                    v += 0
+                    continue
+                res = tile 
                 if res == None:
                     v += 0
                     continue
@@ -62,6 +69,7 @@ class player_robot(Robot):
                     v += unitVal * amt
                 else:
                     v += amt
+        return v
 
 
     # returns True iff the total amount of resources within a scale x scale
@@ -73,29 +81,54 @@ class player_robot(Robot):
     #returns a list [(x,y)] of locations that are adjacent to at least one 
     # def getUnexploredBoundary(self):
 
-    def dist(x1,y1,x2,y2):
+    def dist(self,x1,y1,x2,y2):
         return ((x2-x1)**2.0 + (y2-y1)**2.0)**0.5
+
+    # def isMountain(x,y):
+    #     tile = self.instance[(x,y)]
+    #     return tile.CanMove()
+
 
     # if the local view is resource-sparse and inventory is not full,
     # choose a closest unexplored location to navigate to.
-    # returns coordinates (relative to base) of new exploration point.
+    # NOPE: returns coordinates (relative to base) of new exploration point.
+    # returns first move in shortest path to that location
     # Assumes current location is deemed "sparse" (see isSparse)
-    def nextDestIfIdle(self,boxDim=101):
+    # Assumes inventory not full
+    def nextDirIfIdle(self,boxDim=101):
         foundLocs = [e for e in self.instance]
-        mind,minx,miny = ~1.0,~1,~1
-        minhd = ~1.0 #heuristic distance
+        # foundLocs = self.instance.keys()
+        mind,minx,miny = -1.0,-1,-1
+        # minhd = ~1.0 #heuristic distance
         (rx,ry) = self.location
         for x in range(-boxDim,boxDim):
             for y in range(-boxDim,boxDim):
+                
                 if (x,y) in foundLocs:
                     continue
-                d = dist(x,y,rx,ry)
-                minhd = heurDist(rx,ry)
+                    # tile.CanMove()
+                    # tile = self.instance[(x,y)]
+                d = self.dist(x,y,rx,ry)
+                # minhd = heurDist(rx,ry)
                 if mind < 0.0 or d < mind:
                     mind = d
                     minx = x
                     miny = y
-        return (minx,miny)
+        # return (minx,miny)
+        theta = math.atan2(ry-miny,rx-minx)
+        angles = dict()
+        for i in range(8):
+            angles[i] = math.pi/2.0 + math.pi/4.0
+
+        nextDir,mindt = -1,-1.0
+        for i in range(8):
+            dt = abs(theta-angles[i])
+            if mindt < 0.0 or dt<mindt:
+                nextDir,mindt = i,dt
+
+        # return (Actions.MINE, Actions.DROP_NONE)
+        # return (nextDir, Actions.DROP_NONE)
+        return nextDir
 
     # A couple of helper functions (Implemented at the bottom)
     def OppositeDir(self, direction):
@@ -120,14 +153,12 @@ class player_robot(Robot):
         # Todo: update self.instance on each call here
 
         # Returns home if you have one resource
-        if (self.held_value() > 0):
-            self.goinghome = True
         if(self.storage_remaining() == 0):
             self.goinghome = True
 
         # How to navigate back home
         if(self.goinghome):
-            # You are t home
+            # You are at home
             if(self.toHome == []):
                 self.goinghome = False
                 return (Actions.DROPOFF, Actions.DROP_NONE)
@@ -148,7 +179,8 @@ class player_robot(Robot):
         # If you can't find any resources...go in a random direction!
         actionToTake = None
         if(self.targetPath == None):
-            actionToTake = self.FindRandomPath(view)
+            # actionToTake = self.FindRandomPath(view)
+            actionToTake = self.nextDirIfIdle(boxDim=20)
 
         # Congrats! You have found a resource
         elif(self.targetPath == []):
@@ -193,30 +225,43 @@ class player_robot(Robot):
         visited = set()
         visited.add((0,0))
 
-        targetDepleted = (view[self.targetDest[0]][self.targetDest[1]][0].GetType() == TileType.Resource and
-                         view[self.targetDest[0]][self.targetDest[1]][0].AmountRemaining() <= 0)
-
+        possible_paths = list()
+        possible_dests = list()
         # BFS TO find the next resource within your view
-        if(self.targetPath == None or targetDepleted):
-            while(len(queue)>0):
-                path = queue[0]
-                loc = path[0]
-                queue = queue[1:]
-                viewIndex = (loc[0] + viewLen//2,loc[1]+viewLen//2)
-                if (view[viewIndex[0]][viewIndex[1]][0].GetType() == TileType.Resource and
-                    view[viewIndex[0]][viewIndex[1]][0].AmountRemaining() > 0):
-                    # print(path)
-                    self.targetPath = path[1:]
-                    self.targetDest = path[0]
-                    return
-                elif(view[viewIndex[0]][viewIndex[1]][0].CanMove()):
-                    for i in range(8):
-                        x = loc[0] + deltas[i][0]
-                        y = loc[1] + deltas[i][1]
-                        if(abs(x) <= viewLen//2 and abs(y) <= viewLen//2):
-                            if((x,y) not in visited):
-                                queue.append([(x,y)] + path[1:] + [deltas[i]])
-                                visited.add((x,y))
+        while(len(queue)>0):
+            path = queue[0]
+            loc = path[0]
+            queue = queue[1:]
+            viewIndex = (loc[0] + viewLen//2,loc[1]+viewLen//2)
+            tile = view[viewIndex[0]][viewIndex[1]][0]
+            if tile.CanMove():
+                for i in range(8):
+                    x = loc[0] + deltas[i][0]
+                    y = loc[1] + deltas[i][1]
+                    if(abs(x) <= viewLen//2 and abs(y) <= viewLen//2):
+                        if((x,y) not in visited):
+                            queue.append([(x,y)] + path[1:] + [deltas[i]])
+                            visited.add((x,y))
+                if (tile.GetType() == TileType.Resource and
+                    tile.AmountRemaining() > 0):
+                    possible_paths.append(path[1:])
+                    possible_dests.append(path[0])
+
+        max_value = -1
+        self.targetPath = None
+        self.targetDest = None
+        for i in range(len(possible_paths)):
+            dest = possible_dests[i]
+            viewIndex = (dest[0] + viewLen//2,dest[1]+viewLen//2)
+            tile = view[viewIndex[0]][viewIndex[1]][0]
+            value = tile.Value()
+            units = tile.AmountRemaining()
+            moves = len(possible_paths[i])
+            heuristic = value * units / (units + moves)
+            if heuristic > max_value:
+                max_value = heuristic
+                self.targetPath = possible_paths[i]
+                self.targetDest = dest
 
         return
 
